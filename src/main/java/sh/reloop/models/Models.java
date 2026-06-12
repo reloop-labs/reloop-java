@@ -81,10 +81,13 @@ public class Models {
     ) {}
 
     public record CreateApiKeyParams(
-        String name
+        String name,
+        Boolean enabled,
+        Boolean rateLimitEnabled
     ) {}
 
     public record UpdateApiKeyParams(
-        String name
+        String name,
+        Boolean enabled
     ) {}
 }

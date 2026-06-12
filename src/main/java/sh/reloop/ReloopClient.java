@@ -3,12 +3,14 @@ package sh.reloop;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import sh.reloop.services.ApiKeyService;
+import sh.reloop.services.ContactsService;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Map;
 
 public class ReloopClient {
     private final String apiKey;
@@ -17,6 +19,7 @@ public class ReloopClient {
     private final ObjectMapper objectMapper;
     
     public final ApiKeyService apiKeys;
+    public final ContactsService contacts;
 
     public ReloopClient(String apiKey) {
         this(apiKey, "https://reloop.sh");
@@ -36,6 +39,12 @@ public class ReloopClient {
         this.objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         
         this.apiKeys = new ApiKeyService(this);
+        this.contacts = new ContactsService(this);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchMap(String method, String path, Object body) {
+        return fetch(method, path, body, Map.class);
     }
 
     public <T> T fetch(String method, String path, Object body, Class<T> responseType) {

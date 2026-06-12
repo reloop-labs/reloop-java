@@ -14,7 +14,7 @@ public class ApiKeyService {
     }
 
     public ApiKeyWithKey create(CreateApiKeyParams params) {
-        return client.fetch("POST", "/api-key/v1/", params, ApiKeyWithKey.class);
+        return client.fetch("POST", "/api/api-key/v1/", params, ApiKeyWithKey.class);
     }
 
     public ApiKeyListResponse list(ApiKeyListParams params) {
@@ -27,7 +27,7 @@ public class ApiKeyService {
             if (params.q() != null) query.append("q=").append(URLEncoder.encode(params.q(), StandardCharsets.UTF_8)).append("&");
         }
         
-        String path = "/api-key/v1/";
+        String path = "/api/api-key/v1/";
         if (query.length() > 0) {
             path += "?" + query.toString();
         }
@@ -36,26 +36,26 @@ public class ApiKeyService {
     }
 
     public ApiKey get(String id) {
-        return client.fetch("GET", "/api-key/v1/" + id, null, ApiKey.class);
+        return client.fetch("GET", "/api/api-key/v1/" + id, null, ApiKey.class);
     }
 
     public ApiKey update(String id, UpdateApiKeyParams params) {
-        return client.fetch("PATCH", "/api-key/v1/" + id, params, ApiKey.class);
+        return client.fetch("PATCH", "/api/api-key/v1/" + id, params, ApiKey.class);
     }
 
     public DeleteApiKeyResponse delete(String id) {
-        return client.fetch("DELETE", "/api-key/v1/" + id, null, DeleteApiKeyResponse.class);
+        return client.fetch("DELETE", "/api/api-key/v1/" + id, null, DeleteApiKeyResponse.class);
     }
 
     public ApiKeyWithKey rotate(String id) {
-        return client.fetch("POST", "/api-key/v1/rotate/" + id, null, ApiKeyWithKey.class);
+        return client.fetch("POST", "/api/api-key/v1/rotate/" + id, null, ApiKeyWithKey.class);
     }
 
     public ApiKey enable(String id) {
-        return client.fetch("POST", "/api-key/v1/enable/" + id, null, ApiKey.class);
+        return client.fetch("POST", "/api/api-key/v1/enable/" + id, null, ApiKey.class);
     }
 
     public ApiKey disable(String id) {
-        return client.fetch("POST", "/api-key/v1/disable/" + id, null, ApiKey.class);
+        return client.fetch("POST", "/api/api-key/v1/disable/" + id, null, ApiKey.class);
     }
 }

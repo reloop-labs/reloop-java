@@ -58,4 +58,8 @@ public class ApiKeyService {
     public ApiKey disable(String id) {
         return client.fetch("POST", "/api/api-key/v1/disable/" + id, null, ApiKey.class);
     }
+
+    public ApiKey pause(String id) {
+        return disable(id);
+    }
 }

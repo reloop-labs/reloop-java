@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import sh.reloop.services.ApiKeyService;
 import sh.reloop.services.ContactsService;
+import sh.reloop.services.DomainService;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -20,6 +21,7 @@ public class ReloopClient {
     
     public final ApiKeyService apiKeys;
     public final ContactsService contacts;
+    public final DomainService domain;
 
     public ReloopClient(String apiKey) {
         this(apiKey, "https://reloop.sh");
@@ -40,6 +42,7 @@ public class ReloopClient {
         
         this.apiKeys = new ApiKeyService(this);
         this.contacts = new ContactsService(this);
+        this.domain = new DomainService(this);
     }
 
     @SuppressWarnings("unchecked")

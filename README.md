@@ -34,16 +34,21 @@ Map<String, Object> contact = reloop.contacts.create(params);
 ```java
 import sh.reloop.ReloopClient;
 import sh.reloop.models.Models.*;
+import sh.reloop.services.ApiKeyService;
 
 ReloopClient reloop = new ReloopClient("rl_123456789");
 
-ApiKeyWithKey apiKey = reloop.apiKeys.create(
-    new CreateApiKeyParams("Production key", true, true)
+ApiKeyWithKey created = reloop.apiKeys.create(
+    new CreateApiKeyParams("Production Key", true, true)
 );
 
 ApiKeyListResponse keys = reloop.apiKeys.list(
-    new ApiKeyListParams(1, 10, null, null, null)
+    new ApiKeyListParams(1, 10, true, null, null)
 );
+
+reloop.apiKeys.rotate("key_123456789");
+reloop.apiKeys.pause("key_123456789");
+reloop.apiKeys.enable("key_123456789");
 ```
 
 ## Contacts
@@ -57,4 +62,45 @@ reloop.contacts.groups.addContact(
     "grp_123456789",
     Map.of("contact_id", "cont_123456789")
 );
+```
+
+## Domains
+
+```java
+import sh.reloop.models.Models.*;
+
+Domain domain = reloop.domain.create(
+    new CreateDomainParams(
+        "send.example.com",
+        "inbound",
+        null,
+        true,
+        true,
+        "opportunistic",
+        true,
+        true
+    )
+);
+
+DomainListResponse domains = reloop.domain.list(
+    new ListDomainsParams(1, 10, null, "active")
+);
+
+Domain one = reloop.domain.get("domain_123456789");
+
+reloop.domain.update(
+    "domain_123456789",
+    new UpdateDomainParams(false, true, true, null, null)
+);
+
+DomainStatusResponse status = reloop.domain.verify("domain_123456789");
+
+reloop.domain.forwardDns(
+    "domain_123456789",
+    new ForwardDNSParams("admin@example.com")
+);
+
+DomainNameserversResponse nameservers = reloop.domain.getNameservers("domain_123456789");
+
+reloop.domain.delete("domain_123456789");
 ```

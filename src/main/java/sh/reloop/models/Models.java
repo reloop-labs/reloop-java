@@ -194,4 +194,13 @@ public class Models {
         String dnsProvider,
         String event
     ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record SendMailResponse(
+        Boolean success,
+        String messageId,
+        String status,
+        String timestamp,
+        String id
+    ) {}
 }

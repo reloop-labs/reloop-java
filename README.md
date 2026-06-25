@@ -15,7 +15,7 @@ For setup details and the full API reference, see [reloop.sh/docs](https://reloo
 <dependency>
   <groupId>sh.reloop</groupId>
   <artifactId>reloop-java</artifactId>
-  <version>1.8.0</version>
+  <version>0.1.0</version>
 </dependency>
 ```
 

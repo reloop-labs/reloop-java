@@ -1,60 +1,57 @@
 package sh.reloop.services;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import sh.reloop.models.Models.CreateDomainParams;
-import sh.reloop.models.Models.ListDomainsParams;
-import sh.reloop.models.Models.UpdateDomainParams;
+import sh.reloop.exceptions.ReloopApiException;
+import sh.reloop.exceptions.ReloopValidationException;
+import sh.reloop.models.DomainModels.CreateDomainParams;
+import sh.reloop.models.DomainModels.Domain;
+import sh.reloop.test.TestHttpServer;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DomainServiceTest {
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
     @Test
-    void createParamsSerializeWithSnakeCase() throws Exception {
-        String json = objectMapper.writeValueAsString(
-            new CreateDomainParams(
-                "send.example.com",
-                "inbound",
-                null,
-                true,
-                null,
-                "opportunistic",
-                true,
-                true
-            )
-        );
-
-        assertTrue(json.contains("\"click_tracking\":true"));
-        assertTrue(json.contains("\"custom_return_path\":\"inbound\""));
-        assertFalse(json.contains("clickTracking"));
+    void createHappyPath() throws Exception {
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.respond(200, "{\"id\":\"dom_1\",\"domain\":\"example.com\",\"object\":\"domain\"}");
+            Domain res = server.client().domain.create(new CreateDomainParams("example.com"));
+            assertEquals("POST", server.last().method);
+            assertEquals("/api/domain/v1/create", server.last().path);
+            assertTrue(server.last().body.contains("\"domain\":\"example.com\""));
+            assertEquals("dom_1", res.id);
+        }
     }
 
     @Test
-    void updateParamsSerializeWithSnakeCase() throws Exception {
-        String json = objectMapper.writeValueAsString(
-            new UpdateDomainParams(false, true, true, null, "enforced")
-        );
-
-        assertTrue(json.contains("\"click_tracking\":false"));
-        assertTrue(json.contains("\"open_tracking\":true"));
-        assertFalse(json.contains("clickTracking"));
+    void validationNoHttp() throws Exception {
+        try (TestHttpServer server = new TestHttpServer()) {
+            assertThrows(ReloopValidationException.class, () -> server.client().domain.get("  "));
+            assertEquals(0, server.hits());
+        }
     }
 
     @Test
-    void buildListQueryEncodesFilters() {
-        String query = DomainService.buildListQuery(
-            new ListDomainsParams(2, 5, "example", "active")
-        );
-
-        assertEquals("page=2&limit=5&q=example&status=active", query);
+    void apiError() throws Exception {
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.respond(404, "{\"message\":\"missing\"}");
+            assertThrows(ReloopApiException.class, () -> server.client().domain.get("dom_missing"));
+        }
     }
 
     @Test
-    void buildListQueryReturnsEmptyForNullParams() {
-        assertEquals("", DomainService.buildListQuery(null));
+    void surfaceLock() {
+        Set<String> methods = Arrays.stream(DomainService.class.getDeclaredMethods())
+                .filter(m -> Modifier.isPublic(m.getModifiers()))
+                .map(Method::getName)
+                .collect(Collectors.toSet());
+        assertEquals(Set.of("create", "list", "get", "update", "delete", "verify"), methods);
     }
 }

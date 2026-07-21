@@ -1,63 +1,99 @@
 package sh.reloop;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import sh.reloop.exceptions.ApiErrorBody;
+import sh.reloop.exceptions.ReloopApiException;
 import sh.reloop.services.ApiKeyService;
 import sh.reloop.services.ContactsService;
 import sh.reloop.services.DomainService;
+import sh.reloop.services.InboxService;
 import sh.reloop.services.MailService;
+import sh.reloop.services.WebhookService;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+/** Reloop SDK entry point. */
 public class ReloopClient {
-    private final String apiKey;
+    private static final String DEFAULT_BASE_URL = "https://reloop.sh";
+
+    private final String apiKeyCredential;
     private final String baseUrl;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    
-    public final ApiKeyService apiKeys;
+
+    public final ApiKeyService apiKey;
     public final ContactsService contacts;
     public final DomainService domain;
     public final MailService mail;
+    public final WebhookService webhook;
+    public final InboxService inbox;
 
     public ReloopClient(String apiKey) {
-        this(apiKey, "https://reloop.sh");
+        this(apiKey, DEFAULT_BASE_URL);
     }
 
     public ReloopClient(String apiKey, String baseUrl) {
-        if (apiKey == null || apiKey.isEmpty()) {
-            throw new IllegalArgumentException("Reloop SDK requires an api_key.");
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            throw new IllegalArgumentException("Reloop SDK requires an APIKey");
         }
-        this.apiKey = apiKey;
-        this.baseUrl = baseUrl;
-        
+        this.apiKeyCredential = apiKey.trim();
+        String trimmedBase = baseUrl == null ? DEFAULT_BASE_URL : baseUrl.trim();
+        while (trimmedBase.endsWith("/")) {
+            trimmedBase = trimmedBase.substring(0, trimmedBase.length() - 1);
+        }
+        this.baseUrl = trimmedBase.isEmpty() ? DEFAULT_BASE_URL : trimmedBase;
+
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
-                
-        this.objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-        
-        this.apiKeys = new ApiKeyService(this);
+
+        this.objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+        this.apiKey = new ApiKeyService(this);
         this.contacts = new ContactsService(this);
         this.domain = new DomainService(this);
         this.mail = new MailService(this);
+        this.webhook = new WebhookService(this);
+        this.inbox = new InboxService(this);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> fetchMap(String method, String path, Object body) {
-        return fetch(method, path, body, Map.class);
+    public String getBaseUrl() {
+        return baseUrl;
     }
 
-    public <T> T fetch(String method, String path, Object body, Class<T> responseType) {
+    public ObjectMapper getObjectMapper() {
+        return objectMapper;
+    }
+
+    public <T> T request(String method, String path, Object body, Map<String, String> query, Class<T> responseType) {
         try {
+            String fullUrl = baseUrl + path;
+            if (query != null && !query.isEmpty()) {
+                String qs = query.entrySet().stream()
+                        .filter(e -> e.getValue() != null)
+                        .map(e -> encode(e.getKey()) + "=" + encode(e.getValue()))
+                        .collect(Collectors.joining("&"));
+                if (!qs.isEmpty()) {
+                    fullUrl = fullUrl + (fullUrl.contains("?") ? "&" : "?") + qs;
+                }
+            }
+
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(this.baseUrl + path))
-                    .header("x-api-key", this.apiKey)
+                    .uri(URI.create(fullUrl))
+                    .timeout(Duration.ofSeconds(30))
+                    .header("x-api-key", this.apiKeyCredential)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json");
 
@@ -68,20 +104,39 @@ public class ReloopClient {
                 requestBuilder.method(method, HttpRequest.BodyPublishers.noBody());
             }
 
-            HttpRequest request = requestBuilder.build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 400) {
-                throw new RuntimeException("Reloop API Error: " + response.statusCode() + " " + response.body());
+                ApiErrorBody errBody = new ApiErrorBody();
+                try {
+                    if (response.body() != null && !response.body().isBlank()) {
+                        errBody = objectMapper.readValue(response.body(), ApiErrorBody.class);
+                    }
+                } catch (Exception ignored) {
+                    errBody.message = response.body();
+                }
+                throw new ReloopApiException(response.statusCode(), Integer.toString(response.statusCode()), errBody);
             }
 
-            if (response.statusCode() == 204 || responseType == Void.class) {
+            if (response.statusCode() == 204 || responseType == Void.class || responseType == void.class) {
                 return null;
             }
-
+            if (response.body() == null || response.body().isBlank()) {
+                return null;
+            }
             return objectMapper.readValue(response.body(), responseType);
+        } catch (ReloopApiException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Reloop Network Error", e);
+            throw new ReloopApiException("Reloop network error: " + e.getMessage(), e);
         }
+    }
+
+    public <T> T request(String method, String path, Object body, Class<T> responseType) {
+        return request(method, path, body, null, responseType);
+    }
+
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

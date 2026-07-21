@@ -1,12 +1,22 @@
 package sh.reloop.services;
 
 import sh.reloop.ReloopClient;
-import sh.reloop.models.Models.*;
+import sh.reloop.models.ApiKeyModels.ApiKey;
+import sh.reloop.models.ApiKeyModels.ApiKeyListParams;
+import sh.reloop.models.ApiKeyModels.ApiKeyListResponse;
+import sh.reloop.models.ApiKeyModels.ApiKeyWithKey;
+import sh.reloop.models.ApiKeyModels.CreateApiKeyParams;
+import sh.reloop.models.ApiKeyModels.DeleteApiKeyResponse;
+import sh.reloop.models.ApiKeyModels.UpdateApiKeyParams;
+import sh.reloop.validation.Validators;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
+/** Manages organization API keys. */
 public class ApiKeyService {
+    private static final String API_KEY_V1 = "/api/api-key/v1";
+
     private final ReloopClient client;
 
     public ApiKeyService(ReloopClient client) {
@@ -14,52 +24,62 @@ public class ApiKeyService {
     }
 
     public ApiKeyWithKey create(CreateApiKeyParams params) {
-        return client.fetch("POST", "/api/api-key/v1/", params, ApiKeyWithKey.class);
+        String name = Validators.requireApiKeyName(params == null ? null : params.name, "name");
+        return client.request("POST", API_KEY_V1 + "/", Map.of("name", name), ApiKeyWithKey.class);
     }
 
     public ApiKeyListResponse list(ApiKeyListParams params) {
-        StringBuilder query = new StringBuilder();
+        Map<String, String> query = new LinkedHashMap<>();
         if (params != null) {
-            if (params.page() != null) query.append("page=").append(params.page()).append("&");
-            if (params.limit() != null) query.append("limit=").append(params.limit()).append("&");
-            if (params.enabled() != null) query.append("enabled=").append(params.enabled()).append("&");
-            if (params.userId() != null) query.append("userId=").append(URLEncoder.encode(params.userId(), StandardCharsets.UTF_8)).append("&");
-            if (params.q() != null) query.append("q=").append(URLEncoder.encode(params.q(), StandardCharsets.UTF_8)).append("&");
+            if (params.page != null) {
+                Validators.requirePage(params.page, "page");
+                query.put("page", Integer.toString(params.page));
+            }
+            if (params.limit != null) {
+                Validators.requireLimit(params.limit, 1, 100, "limit");
+                query.put("limit", Integer.toString(params.limit));
+            }
+            if (params.enabled != null) {
+                query.put("enabled", Boolean.toString(params.enabled));
+            }
+            if (params.userId != null) {
+                query.put("userId", params.userId);
+            }
+            if (params.q != null) {
+                query.put("q", params.q);
+            }
         }
-        
-        String path = "/api/api-key/v1/";
-        if (query.length() > 0) {
-            path += "?" + query.toString();
-        }
-        
-        return client.fetch("GET", path, null, ApiKeyListResponse.class);
+        return client.request("GET", API_KEY_V1 + "/", null, query, ApiKeyListResponse.class);
     }
 
-    public ApiKey get(String id) {
-        return client.fetch("GET", "/api/api-key/v1/" + id, null, ApiKey.class);
+    public ApiKey get(String apiKeyId) {
+        String id = Validators.requireApiKeyId(apiKeyId, "apiKeyId");
+        return client.request("GET", API_KEY_V1 + "/" + id, null, ApiKey.class);
     }
 
-    public ApiKey update(String id, UpdateApiKeyParams params) {
-        return client.fetch("PATCH", "/api/api-key/v1/" + id, params, ApiKey.class);
+    public ApiKey update(String apiKeyId, UpdateApiKeyParams params) {
+        String id = Validators.requireApiKeyId(apiKeyId, "apiKeyId");
+        String name = Validators.requireApiKeyName(params == null ? null : params.name, "name");
+        return client.request("PATCH", API_KEY_V1 + "/" + id, Map.of("name", name), ApiKey.class);
     }
 
-    public DeleteApiKeyResponse delete(String id) {
-        return client.fetch("DELETE", "/api/api-key/v1/" + id, null, DeleteApiKeyResponse.class);
+    public DeleteApiKeyResponse delete(String apiKeyId) {
+        String id = Validators.requireApiKeyId(apiKeyId, "apiKeyId");
+        return client.request("DELETE", API_KEY_V1 + "/" + id, null, DeleteApiKeyResponse.class);
     }
 
-    public ApiKeyWithKey rotate(String id) {
-        return client.fetch("POST", "/api/api-key/v1/rotate/" + id, null, ApiKeyWithKey.class);
+    public ApiKeyWithKey rotate(String apiKeyId) {
+        String id = Validators.requireApiKeyId(apiKeyId, "apiKeyId");
+        return client.request("POST", API_KEY_V1 + "/rotate/" + id, Map.of(), ApiKeyWithKey.class);
     }
 
-    public ApiKey enable(String id) {
-        return client.fetch("POST", "/api/api-key/v1/enable/" + id, null, ApiKey.class);
+    public ApiKey enable(String apiKeyId) {
+        String id = Validators.requireApiKeyId(apiKeyId, "apiKeyId");
+        return client.request("POST", API_KEY_V1 + "/enable/" + id, Map.of(), ApiKey.class);
     }
 
-    public ApiKey disable(String id) {
-        return client.fetch("POST", "/api/api-key/v1/disable/" + id, null, ApiKey.class);
-    }
-
-    public ApiKey pause(String id) {
-        return disable(id);
+    public ApiKey disable(String apiKeyId) {
+        String id = Validators.requireApiKeyId(apiKeyId, "apiKeyId");
+        return client.request("POST", API_KEY_V1 + "/disable/" + id, Map.of(), ApiKey.class);
     }
 }

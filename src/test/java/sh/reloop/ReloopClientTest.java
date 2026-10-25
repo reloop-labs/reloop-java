@@ -26,7 +26,7 @@ class ReloopClientTest {
         assertNotNull(client.contacts);
         assertNotNull(client.webhook);
         assertNotNull(client.inbox);
-        assertEquals("2.0.0", Version.VERSION);
+        assertEquals("2.0.1", Version.VERSION);
     }
 
     @Test

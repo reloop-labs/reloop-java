@@ -77,8 +77,11 @@ Idiomatic Java exceptions — the Java equivalent of Node/Python Result objects 
 ```java
 import sh.reloop.services.WebhookVerify;
 
+// payload: the raw request body; signature: the Reloop-Signature request header
 var event = WebhookVerify.constructEvent(payload, signature, secret, 300);
 // or client.webhook.verify(params)
+
+// event.type, event.createdAt, event.data
 ```
 
 ## License

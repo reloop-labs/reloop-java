@@ -169,10 +169,23 @@ public final class WebhookModels {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    /** A verified webhook delivery: {id, type, created_at, data}. */
     public static class WebhookEvent {
         public String id;
+        /** Event type, e.g. email.delivered or email.received. */
+        public String type;
+        /** ISO 8601 time the event was created ({@code created_at}). */
+        public String createdAt;
+        /** Event-specific fields. */
+        public Map<String, Object> data;
+        /** @deprecated Use {@link #type}. */
+        @Deprecated
         public String event;
+        /** @deprecated Use {@link #data}. */
+        @Deprecated
         public Map<String, Object> payload;
+        /** @deprecated Use {@link #createdAt}. Unix seconds. */
+        @Deprecated
         public double timestamp;
     }
 

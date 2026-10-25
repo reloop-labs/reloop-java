@@ -195,6 +195,81 @@ class WebhookServiceTest {
         assertNotNull(event.id);
     }
 
+    private static final String PRODUCTION_PAYLOAD =
+            "{\"id\":\"whev_01abc\",\"type\":\"email.received\",\"created_at\":\"2026-10-26T12:00:00.000Z\","
+                    + "\"data\":{\"email_id\":\"in_1\",\"subject\":\"Hello\"}}";
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void verifyAcceptsProductionDelivery() throws Exception {
+        assertEquals("Reloop-Signature", WebhookVerify.WEBHOOK_SIGNATURE_HEADER);
+        String timestamp = Long.toString(Instant.now().getEpochSecond());
+        String header = signPayload(SECRET, timestamp, PRODUCTION_PAYLOAD);
+
+        VerifyWebhookParams params = new VerifyWebhookParams();
+        params.payload = PRODUCTION_PAYLOAD.getBytes(StandardCharsets.UTF_8);
+        params.headers = Map.of(
+                "reloop-signature", header,
+                "reloop-timestamp", timestamp,
+                "reloop-id", "whev_01abc");
+        params.secret = SECRET;
+
+        WebhookEvent event = WebhookVerify.verify(params);
+        assertEquals("whev_01abc", event.id);
+        assertEquals("email.received", event.type);
+        assertEquals("2026-10-26T12:00:00.000Z", event.createdAt);
+        assertEquals("Hello", event.data.get("subject"));
+        assertEquals(event.type, event.event);
+    }
+
+    @Test
+    void verifyAcceptsLegacyHeader() throws Exception {
+        String timestamp = Long.toString(Instant.now().getEpochSecond());
+        String header = signPayload(SECRET, timestamp, PRODUCTION_PAYLOAD);
+
+        VerifyWebhookParams params = new VerifyWebhookParams(
+                PRODUCTION_PAYLOAD.getBytes(StandardCharsets.UTF_8),
+                Map.of("x-webhook-signature", header),
+                SECRET);
+
+        assertEquals("email.received", WebhookVerify.verify(params).type);
+    }
+
+    @Test
+    void verifyRejectsTamperedProductionBody() throws Exception {
+        String timestamp = Long.toString(Instant.now().getEpochSecond());
+        String header = signPayload(SECRET, timestamp, PRODUCTION_PAYLOAD);
+        byte[] tampered = PRODUCTION_PAYLOAD.replace("Hello", "Hacked").getBytes(StandardCharsets.UTF_8);
+
+        assertThrows(WebhookSignatureException.class,
+                () -> WebhookService.constructEvent(tampered, header, SECRET, 300));
+    }
+
+    @Test
+    void verifyMissingHeaderNamesReloopSignature() {
+        VerifyWebhookParams params = new VerifyWebhookParams(
+                PRODUCTION_PAYLOAD.getBytes(StandardCharsets.UTF_8), Map.of(), SECRET);
+
+        WebhookSignatureException err = assertThrows(
+                WebhookSignatureException.class, () -> WebhookVerify.verify(params));
+        assertTrue(err.getMessage().contains("Reloop-Signature"));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void apiErrorBodyReadsFixAndLegacyTip() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        sh.reloop.exceptions.ApiErrorBody withFix = mapper.readValue(
+                "{\"message\":\"Domain not verified\",\"why\":\"No DKIM\",\"fix\":\"Verify the domain\"}",
+                sh.reloop.exceptions.ApiErrorBody.class);
+        assertEquals("Verify the domain", withFix.fix);
+        assertEquals("Verify the domain", withFix.tip);
+
+        sh.reloop.exceptions.ApiErrorBody withTip = mapper.readValue(
+                "{\"message\":\"x\",\"tip\":\"Try again\"}", sh.reloop.exceptions.ApiErrorBody.class);
+        assertEquals("Try again", withTip.fix);
+    }
+
     private static String signPayload(String secret, String timestamp, String payload) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));

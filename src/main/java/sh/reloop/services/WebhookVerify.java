@@ -16,7 +16,13 @@ import java.util.Map;
 
 /** HMAC-SHA256 webhook signature verification. */
 public final class WebhookVerify {
-    public static final String WEBHOOK_SIGNATURE_HEADER = "x-webhook-signature";
+    /** Header Reloop signs every delivery with: {@code t=<unix>,v1=<hex>}. */
+    public static final String WEBHOOK_SIGNATURE_HEADER = "Reloop-Signature";
+    public static final String WEBHOOK_TIMESTAMP_HEADER = "Reloop-Timestamp";
+    public static final String WEBHOOK_ID_HEADER = "Reloop-Id";
+
+    /** Header name used before 2.0.1. Still accepted as a fallback. */
+    private static final String LEGACY_WEBHOOK_SIGNATURE_HEADER = "x-webhook-signature";
     public static final int DEFAULT_TOLERANCE_SECONDS = 300;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -36,6 +42,9 @@ public final class WebhookVerify {
                 : params.tolerance;
 
         String signatureHeader = getHeader(params.headers, WEBHOOK_SIGNATURE_HEADER);
+        if (signatureHeader == null || signatureHeader.isEmpty()) {
+            signatureHeader = getHeader(params.headers, LEGACY_WEBHOOK_SIGNATURE_HEADER);
+        }
         if (signatureHeader == null || signatureHeader.isEmpty()) {
             throw new WebhookSignatureException("Missing " + WEBHOOK_SIGNATURE_HEADER + " header");
         }
@@ -115,7 +124,7 @@ public final class WebhookVerify {
 
         if (timestamp == null || timestamp.isEmpty() || signatures.isEmpty()) {
             throw new WebhookSignatureException(
-                    "Invalid X-Webhook-Signature header: expected t= and v1= values");
+                    "Invalid " + WEBHOOK_SIGNATURE_HEADER + " header: expected t= and v1= values");
         }
         return new ParsedSignature(timestamp, signatures.toArray(new String[0]));
     }
@@ -147,10 +156,10 @@ public final class WebhookVerify {
         try {
             ts = Double.parseDouble(timestamp);
         } catch (NumberFormatException e) {
-            throw new WebhookSignatureException("Invalid timestamp in X-Webhook-Signature header");
+            throw new WebhookSignatureException("Invalid timestamp in " + WEBHOOK_SIGNATURE_HEADER + " header");
         }
         if (!Double.isFinite(ts)) {
-            throw new WebhookSignatureException("Invalid timestamp in X-Webhook-Signature header");
+            throw new WebhookSignatureException("Invalid timestamp in " + WEBHOOK_SIGNATURE_HEADER + " header");
         }
 
         long age = Math.abs(Instant.now().getEpochSecond() - (long) Math.floor(ts));
@@ -175,28 +184,57 @@ public final class WebhookVerify {
         if (idNode == null || !idNode.isTextual() || idNode.asText().isEmpty()) {
             throw new WebhookSignatureException("Webhook payload missing required field: id");
         }
-        JsonNode eventNode = record.get("event");
-        if (eventNode == null || !eventNode.isTextual() || eventNode.asText().isEmpty()) {
-            throw new WebhookSignatureException("Webhook payload missing required field: event");
+        // Production envelope: {id, type, created_at, data}.
+        // Legacy envelope (pre-2.0.1 fixtures): {id, event, payload, timestamp}.
+        String type = textOrNull(record, "type");
+        if (type == null) {
+            type = textOrNull(record, "event");
         }
-        JsonNode payloadNode = record.get("payload");
-        if (payloadNode == null || !payloadNode.isObject()) {
-            throw new WebhookSignatureException("Webhook payload missing required field: payload");
+        if (type == null) {
+            throw new WebhookSignatureException("Webhook payload missing required field: type");
         }
-        JsonNode timestampNode = record.get("timestamp");
-        if (timestampNode == null || !timestampNode.isNumber()) {
-            throw new WebhookSignatureException("Webhook payload missing required field: timestamp");
+
+        JsonNode dataNode = record.get("data");
+        if (dataNode == null || !dataNode.isObject()) {
+            dataNode = record.get("payload");
         }
-        double ts = timestampNode.asDouble();
-        if (!Double.isFinite(ts)) {
-            throw new WebhookSignatureException("Webhook payload missing required field: timestamp");
+        if (dataNode == null || !dataNode.isObject()) {
+            throw new WebhookSignatureException("Webhook payload missing required field: data");
         }
+
+        String createdAt = textOrNull(record, "created_at");
+        double unixSeconds;
+        if (createdAt != null) {
+            try {
+                unixSeconds = java.time.OffsetDateTime.parse(createdAt).toInstant().toEpochMilli() / 1000.0;
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new WebhookSignatureException("Webhook payload has an invalid created_at");
+            }
+        } else {
+            JsonNode timestampNode = record.get("timestamp");
+            if (timestampNode == null || !timestampNode.isNumber() || !Double.isFinite(timestampNode.asDouble())) {
+                throw new WebhookSignatureException("Webhook payload missing required field: created_at");
+            }
+            unixSeconds = timestampNode.asDouble();
+            createdAt = Instant.ofEpochMilli((long) (unixSeconds * 1000)).toString();
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = MAPPER.convertValue(dataNode, Map.class);
 
         WebhookEvent event = new WebhookEvent();
         event.id = idNode.asText();
-        event.event = eventNode.asText();
-        event.timestamp = timestampNode.asDouble();
-        event.payload = MAPPER.convertValue(payloadNode, Map.class);
+        event.type = type;
+        event.createdAt = createdAt;
+        event.data = data;
+        event.event = type;
+        event.payload = data;
+        event.timestamp = unixSeconds;
         return event;
+    }
+
+    private static String textOrNull(JsonNode record, String field) {
+        JsonNode node = record.get(field);
+        return node != null && node.isTextual() && !node.asText().isEmpty() ? node.asText() : null;
     }
 }
